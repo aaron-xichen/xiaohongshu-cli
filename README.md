@@ -1,6 +1,6 @@
 # xiaohongshu-cli
 
-[![CI](https://github.com/aaron-xichen/xiaohongshu-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/aaron-xichen/xiaohongshu-cli/actions/workflows/ci.yml)
+[![CI](https://github.com/jackwener/xiaohongshu-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/jackwener/xiaohongshu-cli/actions/workflows/ci.yml)
 [![PyPI version](https://img.shields.io/pypi/v/xiaohongshu-cli.svg)](https://pypi.org/project/xiaohongshu-cli/)
 [![Python](https://img.shields.io/badge/python-%3E%3D3.10-blue.svg)](https://pypi.org/project/xiaohongshu-cli/)
 
@@ -236,7 +236,7 @@ xiaohongshu-cli ships with a [`SKILL.md`](./SKILL.md) that teaches AI agents how
 ### [Skills CLI](https://github.com/vercel-labs/skills) (Recommended)
 
 ```bash
-npx skills add aaron-xichen/xiaohongshu-cli
+npx skills add jackwener/xiaohongshu-cli
 ```
 
 | Flag | Description |
@@ -249,7 +249,7 @@ npx skills add aaron-xichen/xiaohongshu-cli
 
 ```bash
 mkdir -p .agents/skills
-git clone git@github.com:aaron-xichen/xiaohongshu-cli.git .agents/skills/xiaohongshu-cli
+git clone git@github.com:jackwener/xiaohongshu-cli.git .agents/skills/xiaohongshu-cli
 ```
 
 ### ~~OpenClaw / ClawHub~~ (Deprecated)
@@ -495,7 +495,7 @@ xiaohongshu-cli 自带 [`SKILL.md`](./SKILL.md)，让 AI Agent 能自动学习�
 ### [Skills CLI](https://github.com/vercel-labs/skills)（推荐）
 
 ```bash
-npx skills add aaron-xichen/xiaohongshu-cli
+npx skills add jackwener/xiaohongshu-cli
 ```
 
 | 参数 | 说明 |
@@ -508,7 +508,7 @@ npx skills add aaron-xichen/xiaohongshu-cli
 
 ```bash
 mkdir -p .agents/skills
-git clone git@github.com:aaron-xichen/xiaohongshu-cli.git .agents/skills/xiaohongshu-cli
+git clone git@github.com:jackwener/xiaohongshu-cli.git .agents/skills/xiaohongshu-cli
 ```
 
 ### ~~OpenClaw / ClawHub~~（已过时）
@@ -517,7 +517,7 @@ git clone git@github.com:aaron-xichen/xiaohongshu-cli.git .agents/skills/xiaohon
 
 ## 安装上游更新与依赖变更
 
-当本仓库有更新或依赖变更时，强制重装：
+当上游（jackwener/xiaohongshu-cli）有更新或本 fork 有新改动时，强制重装：
 
 ```bash
 uv tool install --force git+https://github.com/aaron-xichen/xiaohongshu-cli.git
