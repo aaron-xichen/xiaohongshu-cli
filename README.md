@@ -38,6 +38,9 @@ A CLI for Xiaohongshu (小红书) — search, read, interact, and post via rever
 # Recommended: uv tool (fast, isolated)
 uv tool install xiaohongshu-cli
 
+# Or: install from this fork (includes Doubao browser support)
+uv tool install git+https://github.com/aaron-xichen/xiaohongshu-cli.git
+
 # Or: pipx
 pipx install xiaohongshu-cli
 ```
@@ -46,17 +49,28 @@ Upgrade to the latest version:
 
 ```bash
 uv tool upgrade xiaohongshu-cli
-# Or: pipx upgrade xiaohongshu-cli
+# Or force reinstall from fork:
+uv tool install --force git+https://github.com/aaron-xichen/xiaohongshu-cli.git
 ```
 
 > **Tip:** Upgrade regularly to avoid unexpected errors from outdated API handling.
 
-From source:
+From source (development mode):
 
 ```bash
-git clone git@github.com:jackwener/xiaohongshu-cli.git
+git clone https://github.com/aaron-xichen/xiaohongshu-cli.git
 cd xiaohongshu-cli
-uv sync
+uv sync            # install deps into .venv
+uv run xhs --help  # run without global install
+
+# Or install globally in editable mode:
+uv pip install -e .
+```
+
+After installation, the `xhs` command is available in your PATH. If `xhs: command not found`, ensure `~/.local/bin` is in your PATH:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
 ```
 
 ## Usage
@@ -149,8 +163,15 @@ xhs notifications --type connections   # 新增关注 notifications
 xiaohongshu-cli supports multiple authentication methods:
 
 1. **Saved cookies** — loads from `~/.xiaohongshu-cli/cookies.json`
-2. **Browser cookies** — auto-detects installed browsers and extracts cookies (supports Chrome, Arc, Edge, Firefox, Safari, Brave, Chromium, Opera, Vivaldi, and more)
+2. **Browser cookies** — auto-detects installed browsers and extracts cookies (supports Chrome, Arc, Edge, Firefox, Safari, Brave, Chromium, Opera, Vivaldi, Doubao/豆包, and more)
 3. **QR code login** — browser-assisted login with terminal QR output (`xhs login --qrcode`)
+
+```bash
+xhs login                          # auto-detect all installed browsers
+xhs login --cookie-source chrome   # use Chrome specifically
+xhs login --cookie-source doubao   # use Doubao (豆包) browser
+xhs login --qrcode                 # QR code login (opens Camoufox)
+```
 
 `xhs login` automatically tries all installed browsers and uses the first one with valid cookies.
 Use `--cookie-source <browser>` to specify a browser explicitly, or `--qrcode` for browser-assisted QR login.
@@ -334,6 +355,9 @@ The built-in Gaussian jitter delay (~1-1.5s between requests) is intentional to 
 # 推荐：uv tool（快速、隔离环境）
 uv tool install xiaohongshu-cli
 
+# 或者从本 fork 安装（含豆包浏览器支持）
+uv tool install git+https://github.com/aaron-xichen/xiaohongshu-cli.git
+
 # 或者：pipx
 pipx install xiaohongshu-cli
 ```
@@ -342,17 +366,28 @@ pipx install xiaohongshu-cli
 
 ```bash
 uv tool upgrade xiaohongshu-cli
-# 或：pipx upgrade xiaohongshu-cli
+# 或强制重装本 fork：
+uv tool install --force git+https://github.com/aaron-xichen/xiaohongshu-cli.git
 ```
 
 > **提示：** 建议定期升级，避免因版本过旧导致的 API 调用异常。
 
-从源码安装：
+从源码安装（开发模式）：
 
 ```bash
-git clone git@github.com:jackwener/xiaohongshu-cli.git
+git clone https://github.com/aaron-xichen/xiaohongshu-cli.git
 cd xiaohongshu-cli
-uv sync
+uv sync            # 安装依赖到 .venv
+uv run xhs --help  # 无需全局安装即可运行
+
+# 或全局可编辑安装：
+uv pip install -e .
+```
+
+安装后 `xhs` 命令即可在终端直接使用。如果提示 `xhs: command not found`，确认 `~/.local/bin` 在 PATH 中：
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
 ```
 
 ## 使用示例
@@ -431,8 +466,15 @@ xhs notifications --type connections   # 新增关注通知
 xiaohongshu-cli 支持多种认证方式：
 
 1. **已保存 Cookie** — 从 `~/.xiaohongshu-cli/cookies.json` 加载
-2. **浏览器 Cookie** — 自动检测已安装浏览器并提取（支持 Chrome、Arc、Edge、Firefox、Safari、Brave、Chromium、Opera、Vivaldi 等）
+2. **浏览器 Cookie** — 自动检测已安装浏览器并提取（支持 Chrome、Arc、Edge、Firefox、Safari、Brave、Chromium、Opera、Vivaldi、豆包浏览器等）
 3. **二维码扫码登录** — browser-assisted 登录，终端显示二维码，用小红书 App 扫码（`xhs login --qrcode`）
+
+```bash
+xhs login                          # 自动检测所有已安装浏览器
+xhs login --cookie-source chrome   # 指定 Chrome
+xhs login --cookie-source doubao   # 指定豆包浏览器
+xhs login --qrcode                 # 二维码扫码登录（打开 Camoufox）
+```
 
 Cookie 保存后有效期 **7 天**，超时后自动尝试从浏览器刷新。
 
