@@ -347,8 +347,100 @@ def _get_browser_loader(source: str):
     return loader
 
 
+# ─── Custom Chromium-based browser support ──────────────────────────────────
+# Browsers like 豆包 (Doubao) are Chromium-based but not in browser_cookie3.
+# We detect their cookie paths and use browser_cookie3.Chrome(cookie_file=...).
+
+_CUSTOM_CHROMIUM_BROWSERS: dict[str, dict[str, list[str]]] = {
+    "doubao": {
+        "linux": [
+            "~/.config/doubao-browser/Default/Cookies",
+            "~/.config/doubao-browser/Profile */Cookies",
+            "~/.config/Doubao/Default/Cookies",
+            "~/.config/Doubao/Profile */Cookies",
+        ],
+        "darwin": [
+            "~/Library/Application Support/Doubao/Default/Cookies",
+            "~/Library/Application Support/Doubao/Profile */Cookies",
+            "~/Library/Application Support/Doubao Browser/Default/Cookies",
+            "~/Library/Application Support/Doubao Browser/Profile */Cookies",
+        ],
+        "win32": [
+            "Doubao\\User Data\\Default\\Cookies",
+            "Doubao\\User Data\\Default\\Network\\Cookies",
+            "Doubao\\User Data\\Profile *\\Cookies",
+            "Doubao\\User Data\\Profile *\\Network\\Cookies",
+        ],
+    },
+}
+
+
+def _find_custom_cookie_file(browser: str) -> Path | None:
+    """Locate the cookie file for a custom Chromium-based browser."""
+    import glob
+    import os
+
+    paths_config = _CUSTOM_CHROMIUM_BROWSERS.get(browser)
+    if not paths_config:
+        return None
+
+    if sys.platform == "darwin":
+        candidates = paths_config.get("darwin", [])
+    elif sys.platform == "win32":
+        local_app_data = Path(os.environ.get("LOCALAPPDATA", ""))
+        candidates = [str(local_app_data / p) for p in paths_config.get("win32", [])]
+    else:
+        candidates = paths_config.get("linux", [])
+
+    for pattern in candidates:
+        expanded = str(Path(pattern).expanduser())
+        matches = glob.glob(expanded)
+        for match in matches:
+            if Path(match).is_file():
+                return Path(match)
+
+    return None
+
+
+def _extract_custom_chromium(source: str) -> dict[str, str] | None:
+    """Extract cookies from a custom Chromium-based browser by locating its cookie file."""
+    cookie_file = _find_custom_cookie_file(source)
+    if not cookie_file:
+        logger.debug("Could not find cookie file for custom browser: %s", source)
+        return None
+
+    try:
+        import browser_cookie3 as bc3
+    except ImportError:
+        logger.debug("browser_cookie3 not installed")
+        return None
+
+    try:
+        jar = bc3.Chrome(cookie_file=str(cookie_file), domain_name=".xiaohongshu.com")
+    except Exception as exc:
+        logger.debug("%s custom extraction failed: %s", source, exc)
+        return None
+
+    cookies = {cookie.name: cookie.value for cookie in jar if "xiaohongshu.com" in (cookie.domain or "")}
+    if cookies.get("a1"):
+        logger.debug("Loaded XHS cookies from %s (cookie_file=%s)", source, cookie_file)
+        return cookies
+
+    logger.debug("No usable a1 cookie found in custom browser %s", source)
+    return None
+
+
+def _is_custom_chromium_browser(source: str) -> bool:
+    """Check if source is a registered custom Chromium browser."""
+    return source in _CUSTOM_CHROMIUM_BROWSERS
+
+
 def _extract_in_process(source: str) -> dict[str, str] | None:
     """Extract cookies in-process for macOS Keychain compatibility."""
+    # Try custom Chromium browsers first
+    if _is_custom_chromium_browser(source):
+        return _extract_custom_chromium(source)
+
     try:
         loader = _get_browser_loader(source)
     except ImportError:
@@ -433,6 +525,7 @@ def extract_browser_cookies(source: str = "auto") -> tuple[str, dict[str, str]] 
 
     When *source* is ``"auto"``, tries supported browsers with a small
     thread pool and returns the first one that has valid cookies.
+    Also supports custom Chromium-based browsers (e.g. doubao).
 
     Returns ``(browser_name, cookies)`` on success, or ``None``.
     """
@@ -440,17 +533,24 @@ def extract_browser_cookies(source: str = "auto") -> tuple[str, dict[str, str]] 
         cookies = _extract_in_process(source)
         if cookies:
             return source, cookies
-        cookies = _extract_via_subprocess(source)
-        if cookies:
-            return source, cookies
+        # Custom browsers don't need subprocess fallback
+        if not _is_custom_chromium_browser(source):
+            cookies = _extract_via_subprocess(source)
+            if cookies:
+                return source, cookies
         return None
 
-    # Auto-detect: try all available browsers
+    # Auto-detect: try all available browsers (including custom ones)
     try:
-        browsers = _available_browsers()
+        browsers = list(_available_browsers())
     except ImportError:
         logger.debug("browser_cookie3 not installed")
-        return None
+        browsers = []
+
+    # Append custom Chromium browsers to the candidate list
+    for custom in _CUSTOM_CHROMIUM_BROWSERS:
+        if custom not in browsers:
+            browsers.append(custom)
 
     from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 
