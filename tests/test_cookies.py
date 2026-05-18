@@ -1,12 +1,19 @@
 """Unit tests for cookie management (no network required)."""
 
 
+import http.cookiejar
 import time
+from pathlib import Path
 
 import pytest
 
 from xhs_cli.cookies import (
     NOTE_CONTEXT_TTL_SECONDS,
+    _cookies_from_jar,
+    _extract_custom_chromium,
+    _find_custom_cookie_file,
+    _load_custom_chromium_jar,
+    _local_state_for_cookie_file,
     cache_note_context,
     clear_cookies,
     cookies_to_string,
@@ -180,3 +187,98 @@ class TestNoteIndexCache:
             "xsec_token": "",
             "xsec_source": "",
         }
+
+
+class TestCustomChromiumBrowsers:
+    def test_local_state_resolved_from_default_profile(self, tmp_path):
+        cookie_file = tmp_path / "Default" / "Cookies"
+        cookie_file.parent.mkdir(parents=True)
+        cookie_file.write_bytes(b"")
+        (tmp_path / "Local State").write_text("{}")
+
+        assert _local_state_for_cookie_file(cookie_file) == tmp_path / "Local State"
+
+    def test_find_custom_cookie_file_prefers_default_profile(self, tmp_path, monkeypatch):
+        doubao_root = tmp_path / "Doubao"
+        default_cookies = doubao_root / "Default" / "Cookies"
+        profile_cookies = doubao_root / "Profile 1" / "Cookies"
+        default_cookies.parent.mkdir(parents=True)
+        profile_cookies.parent.mkdir(parents=True)
+        default_cookies.write_bytes(b"default")
+        profile_cookies.write_bytes(b"profile")
+
+        import xhs_cli.cookies as cookies_mod
+
+        monkeypatch.setitem(
+            cookies_mod._CUSTOM_CHROMIUM_BROWSERS,
+            "doubao",
+            {
+                "label": "Doubao",
+                "cookie_paths": {
+                    "darwin": [
+                        str(doubao_root / "Default" / "Cookies"),
+                        str(doubao_root / "Profile *" / "Cookies"),
+                    ],
+                    "linux": [],
+                    "win32": [],
+                },
+                "osx_key_service": "Doubao Safe Storage",
+                "osx_key_user": "Doubao",
+            },
+        )
+        monkeypatch.setattr("xhs_cli.cookies.sys.platform", "darwin")
+
+        assert _find_custom_cookie_file("doubao") == default_cookies
+
+    def test_load_custom_chromium_jar_uses_doubao_keychain(self, monkeypatch):
+        cookie_file = Path("/tmp/Doubao/Default/Cookies")
+        fake_jar = http.cookiejar.CookieJar()
+        captured: dict = {}
+
+        class FakeChromiumBased:
+            def __init__(self, **kwargs):
+                captured.update(kwargs)
+
+            def load(self):
+                return fake_jar
+
+        monkeypatch.setattr("browser_cookie3.ChromiumBased", FakeChromiumBased)
+        monkeypatch.setattr("xhs_cli.cookies.sys.platform", "darwin")
+
+        assert _load_custom_chromium_jar("doubao", cookie_file) is fake_jar
+        assert captured["cookie_file"] == str(cookie_file)
+        assert captured["osx_key_service"] == "Doubao Safe Storage"
+        assert captured["osx_key_user"] == "Doubao"
+
+    def test_extract_custom_chromium_returns_xhs_cookies(self, monkeypatch):
+        jar = http.cookiejar.CookieJar()
+        jar.set_cookie(
+            http.cookiejar.Cookie(
+                version=0,
+                name="a1",
+                value="doubao-a1",
+                port=None,
+                port_specified=False,
+                domain=".xiaohongshu.com",
+                domain_specified=True,
+                domain_initial_dot=True,
+                path="/",
+                path_specified=True,
+                secure=False,
+                expires=None,
+                discard=True,
+                comment=None,
+                comment_url=None,
+                rest={},
+                rfc2109=False,
+            )
+        )
+        monkeypatch.setattr(
+            "xhs_cli.cookies._find_custom_cookie_file",
+            lambda browser: Path("/tmp/Doubao/Default/Cookies"),
+        )
+        monkeypatch.setattr("xhs_cli.cookies._load_custom_chromium_jar", lambda source, cookie_file: jar)
+
+        cookies = _extract_custom_chromium("doubao")
+        assert cookies == {"a1": "doubao-a1"}
+        assert _cookies_from_jar(jar) == {"a1": "doubao-a1"}

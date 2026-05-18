@@ -348,58 +348,128 @@ def _get_browser_loader(source: str):
 
 
 # ─── Custom Chromium-based browser support ──────────────────────────────────
-# Browsers like 豆包 (Doubao) are Chromium-based but not in browser_cookie3.
-# We detect their cookie paths and use browser_cookie3.Chrome(cookie_file=...).
+# Chromium forks (e.g. 豆包/Doubao) are not in browser_cookie3. Each needs its
+# cookie DB path plus OS-specific decryption metadata (Keychain on macOS).
 
-_CUSTOM_CHROMIUM_BROWSERS: dict[str, dict[str, list[str]]] = {
+_CUSTOM_CHROMIUM_BROWSERS: dict[str, dict[str, Any]] = {
     "doubao": {
-        "linux": [
-            "~/.config/doubao-browser/Default/Cookies",
-            "~/.config/doubao-browser/Profile */Cookies",
-            "~/.config/Doubao/Default/Cookies",
-            "~/.config/Doubao/Profile */Cookies",
-        ],
-        "darwin": [
-            "~/Library/Application Support/Doubao/Default/Cookies",
-            "~/Library/Application Support/Doubao/Profile */Cookies",
-            "~/Library/Application Support/Doubao Browser/Default/Cookies",
-            "~/Library/Application Support/Doubao Browser/Profile */Cookies",
-        ],
-        "win32": [
-            "Doubao\\User Data\\Default\\Cookies",
-            "Doubao\\User Data\\Default\\Network\\Cookies",
-            "Doubao\\User Data\\Profile *\\Cookies",
-            "Doubao\\User Data\\Profile *\\Network\\Cookies",
-        ],
+        "label": "Doubao",
+        "cookie_paths": {
+            "linux": [
+                "~/.config/doubao-browser/Default/Cookies",
+                "~/.config/doubao-browser/Default/Network/Cookies",
+                "~/.config/doubao-browser/Profile */Cookies",
+                "~/.config/doubao-browser/Profile */Network/Cookies",
+                "~/.config/Doubao/Default/Cookies",
+                "~/.config/Doubao/Default/Network/Cookies",
+                "~/.config/Doubao/Profile */Cookies",
+                "~/.config/Doubao/Profile */Network/Cookies",
+            ],
+            "darwin": [
+                "~/Library/Application Support/Doubao/Default/Cookies",
+                "~/Library/Application Support/Doubao/Default/Network/Cookies",
+                "~/Library/Application Support/Doubao/Profile */Cookies",
+                "~/Library/Application Support/Doubao/Profile */Network/Cookies",
+                "~/Library/Application Support/Doubao Browser/Default/Cookies",
+                "~/Library/Application Support/Doubao Browser/Default/Network/Cookies",
+                "~/Library/Application Support/Doubao Browser/Profile */Cookies",
+                "~/Library/Application Support/Doubao Browser/Profile */Network/Cookies",
+            ],
+            "win32": [
+                "Doubao\\User Data\\Default\\Cookies",
+                "Doubao\\User Data\\Default\\Network\\Cookies",
+                "Doubao\\User Data\\Profile *\\Cookies",
+                "Doubao\\User Data\\Profile *\\Network\\Cookies",
+            ],
+        },
+        "osx_key_service": "Doubao Safe Storage",
+        "osx_key_user": "Doubao",
+        "os_crypt_name": "doubao",
     },
 }
+
+
+def _custom_browser_cookie_patterns(browser: str) -> list[str]:
+    """Return glob patterns for a custom browser's cookie DB on this OS."""
+    import os
+
+    config = _CUSTOM_CHROMIUM_BROWSERS.get(browser, {})
+    paths = config.get("cookie_paths", config)
+    if sys.platform == "darwin":
+        return list(paths.get("darwin", []))
+    if sys.platform == "win32":
+        local_app_data = Path(os.environ.get("LOCALAPPDATA", ""))
+        return [str(local_app_data / pattern) for pattern in paths.get("win32", [])]
+    return list(paths.get("linux", []))
 
 
 def _find_custom_cookie_file(browser: str) -> Path | None:
     """Locate the cookie file for a custom Chromium-based browser."""
     import glob
-    import os
 
-    paths_config = _CUSTOM_CHROMIUM_BROWSERS.get(browser)
-    if not paths_config:
+    candidates: list[Path] = []
+    for pattern in _custom_browser_cookie_patterns(browser):
+        expanded = str(Path(pattern).expanduser())
+        for match in glob.glob(expanded):
+            path = Path(match)
+            if path.is_file():
+                candidates.append(path)
+
+    if not candidates:
         return None
 
-    if sys.platform == "darwin":
-        candidates = paths_config.get("darwin", [])
-    elif sys.platform == "win32":
-        local_app_data = Path(os.environ.get("LOCALAPPDATA", ""))
-        candidates = [str(local_app_data / p) for p in paths_config.get("win32", [])]
-    else:
-        candidates = paths_config.get("linux", [])
+    # Prefer Default profile, then the most recently modified cookie DB.
+    def _sort_key(path: Path) -> tuple[int, float]:
+        profile = path.parent.name
+        is_default = profile == "Default"
+        return (0 if is_default else 1, -path.stat().st_mtime)
 
-    for pattern in candidates:
-        expanded = str(Path(pattern).expanduser())
-        matches = glob.glob(expanded)
-        for match in matches:
-            if Path(match).is_file():
-                return Path(match)
+    return min(candidates, key=_sort_key)
 
+
+def _local_state_for_cookie_file(cookie_file: Path) -> Path | None:
+    """Resolve Chromium ``Local State`` (encryption key) for a cookie DB path."""
+    profile_dir = cookie_file.parent
+    if profile_dir.name in {"Default", "Network"} or profile_dir.name.startswith("Profile"):
+        local_state = profile_dir.parent / "Local State"
+        if local_state.is_file():
+            return local_state
     return None
+
+
+def _load_custom_chromium_jar(source: str, cookie_file: Path):
+    """Build a cookie jar for a custom Chromium browser with correct decryption keys."""
+    import browser_cookie3 as bc3
+
+    config = _CUSTOM_CHROMIUM_BROWSERS[source]
+    label = str(config.get("label", source.title()))
+    loader_kwargs: dict[str, Any] = {
+        "browser": label,
+        "cookie_file": str(cookie_file),
+        "domain_name": ".xiaohongshu.com",
+    }
+
+    if sys.platform == "darwin":
+        loader_kwargs["osx_key_service"] = config.get(
+            "osx_key_service", f"{label} Safe Storage"
+        )
+        loader_kwargs["osx_key_user"] = config.get("osx_key_user", label)
+    elif sys.platform == "win32":
+        key_file = _local_state_for_cookie_file(cookie_file)
+        if key_file is not None:
+            loader_kwargs["key_file"] = str(key_file)
+    else:
+        loader_kwargs["os_crypt_name"] = config.get("os_crypt_name", source)
+
+    return bc3.ChromiumBased(**loader_kwargs).load()
+
+
+def _cookies_from_jar(jar) -> dict[str, str]:
+    return {
+        cookie.name: cookie.value
+        for cookie in jar
+        if "xiaohongshu.com" in (cookie.domain or "")
+    }
 
 
 def _extract_custom_chromium(source: str) -> dict[str, str] | None:
@@ -410,18 +480,15 @@ def _extract_custom_chromium(source: str) -> dict[str, str] | None:
         return None
 
     try:
-        import browser_cookie3 as bc3
+        jar = _load_custom_chromium_jar(source, cookie_file)
     except ImportError:
         logger.debug("browser_cookie3 not installed")
         return None
-
-    try:
-        jar = bc3.Chrome(cookie_file=str(cookie_file), domain_name=".xiaohongshu.com").load()
     except Exception as exc:
         logger.debug("%s custom extraction failed: %s", source, exc)
         return None
 
-    cookies = {cookie.name: cookie.value for cookie in jar if "xiaohongshu.com" in (cookie.domain or "")}
+    cookies = _cookies_from_jar(jar)
     if cookies.get("a1"):
         logger.debug("Loaded XHS cookies from %s (cookie_file=%s)", source, cookie_file)
         return cookies
