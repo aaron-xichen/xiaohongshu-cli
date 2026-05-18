@@ -515,6 +515,14 @@ git clone git@github.com:jackwener/xiaohongshu-cli.git .agents/skills/xiaohongsh
 
 > ⚠️ ClawHub 安装方式已过时，不再支持。请使用上方的 Skills CLI 或手动安装。
 
+## 安装上游更新与依赖变更
+
+当上游（jackwener/xiaohongshu-cli）有更新或本 fork 有新改动时，强制重装：
+
+```bash
+uv tool install --force git+https://github.com/aaron-xichen/xiaohongshu-cli.git
+```
+
 ## License
 
 Apache-2.0
