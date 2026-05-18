@@ -416,7 +416,7 @@ def _extract_custom_chromium(source: str) -> dict[str, str] | None:
         return None
 
     try:
-        jar = bc3.Chrome(cookie_file=str(cookie_file), domain_name=".xiaohongshu.com")
+        jar = bc3.Chrome(cookie_file=str(cookie_file), domain_name=".xiaohongshu.com").load()
     except Exception as exc:
         logger.debug("%s custom extraction failed: %s", source, exc)
         return None
